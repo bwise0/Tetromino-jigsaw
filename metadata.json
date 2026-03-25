@@ -1,0 +1,5 @@
+{
+  "name": "Tetromino Jigsaw",
+  "description": "A puzzle game where you fill a target shape using Tetris-style blocks (Tetrominoes).",
+  "requestFramePermissions": []
+}
