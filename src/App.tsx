@@ -21,6 +21,21 @@ const rotatePoints = (points: Point[], rotation: number): Point[] => {
   }));
 };
 
+// Helper to rotate a point around a center
+const rotateAround = (point: Point, center: { x: number; y: number }, rotation: number): Point => {
+  const rad = (rotation * Math.PI) / 180;
+  const cos = Math.round(Math.cos(rad));
+  const sin = Math.round(Math.sin(rad));
+  
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  
+  return {
+    x: dx * cos - dy * sin + center.x,
+    y: dx * sin + dy * cos + center.y
+  };
+};
+
 // Helper to get normalized points (min x, y = 0)
 const normalizePoints = (points: Point[]): Point[] => {
   const minX = Math.min(...points.map(p => p.x));
@@ -45,13 +60,19 @@ const Block: React.FC<BlockProps> = ({
 }) => {
   const targetShape = useMemo(() => rotatePoints(TETROMINO_SHAPES[block.type], block.targetRotation), [block.type, block.targetRotation]);
   
+  const centroid = useMemo(() => {
+    const tx = targetShape.reduce((sum, p) => sum + p.x + 0.5, 0) / targetShape.length;
+    const ty = targetShape.reduce((sum, p) => sum + p.y + 0.5, 0) / targetShape.length;
+    return { x: tx * CELL_SIZE, y: ty * CELL_SIZE };
+  }, [targetShape]);
+
   return (
     <motion.div
       layoutId={block.id}
-      drag
+      drag={!isPlaced}
       dragMomentum={false}
       onDragEnd={(event, info) => onDragEnd(block, event, info)}
-      className="absolute cursor-grab active:cursor-grabbing z-10 tetromino-block drop-shadow-md"
+      className={`absolute ${isPlaced ? '' : 'cursor-grab active:cursor-grabbing'} z-10 tetromino-block drop-shadow-md`}
       initial={false}
       animate={{
         x: block.position.x * CELL_SIZE,
@@ -65,11 +86,11 @@ const Block: React.FC<BlockProps> = ({
         top: 0,
         width: CELL_SIZE,
         height: CELL_SIZE,
-        transformOrigin: "0 0"
+        transformOrigin: `${centroid.x}px ${centroid.y}px`
       }}
-      whileHover={{ scale: 1.02, zIndex: 50 }}
-      whileDrag={{ scale: 1.05, zIndex: 100 }}
-      onTap={() => onRotate(block.id)}
+      whileHover={!isPlaced ? { scale: 1.02, zIndex: 50 } : {}}
+      whileDrag={!isPlaced ? { scale: 1.05, zIndex: 100 } : {}}
+      onTap={() => !isPlaced && onRotate(block.id)}
     >
       <div className="relative">
         {targetShape.map((p, i) => {
@@ -85,10 +106,12 @@ const Block: React.FC<BlockProps> = ({
                 height: CELL_SIZE,
                 left: p.x * CELL_SIZE,
                 top: p.y * CELL_SIZE,
-                backgroundColor: '#f0f0f0',
+                backgroundColor: isPlaced ? 'transparent' : '#f0f0f0',
                 backgroundImage: imageUrl ? `url(${imageUrl})` : 'none',
                 backgroundSize: `${GRID_SIZE * CELL_SIZE}px ${GRID_SIZE * CELL_SIZE}px`,
                 backgroundPosition: `-${solvedX * CELL_SIZE}px -${solvedY * CELL_SIZE}px`,
+                border: isPlaced ? 'none' : '1px solid rgba(0,0,0,0.1)',
+                borderRadius: '2px',
               }}
             />
           );
@@ -112,6 +135,21 @@ const BlockGroup: React.FC<BlockGroupProps> = ({
   imageUrl
 }) => {
   const refBlock = blocks[0];
+
+  const centroid = useMemo(() => {
+    let tx = 0, ty = 0, count = 0;
+    blocks.forEach(b => {
+      const targetShape = rotatePoints(TETROMINO_SHAPES[b.type], b.targetRotation);
+      const relX = b.targetPosition.x - refBlock.targetPosition.x;
+      const relY = b.targetPosition.y - refBlock.targetPosition.y;
+      targetShape.forEach(p => {
+        tx += (relX + p.x + 0.5);
+        ty += (relY + p.y + 0.5);
+        count++;
+      });
+    });
+    return { x: (tx / count) * CELL_SIZE, y: (ty / count) * CELL_SIZE };
+  }, [blocks, refBlock]);
   
   return (
     <motion.div
@@ -132,7 +170,7 @@ const BlockGroup: React.FC<BlockGroupProps> = ({
         top: 0,
         width: CELL_SIZE,
         height: CELL_SIZE,
-        transformOrigin: "0 0"
+        transformOrigin: `${centroid.x}px ${centroid.y}px`
       }}
     >
       {blocks.map(block => {
@@ -186,29 +224,29 @@ const PUZZLE_CONFIGS: Record<PuzzleSize, { width: number; height: number; offset
   '4x4': {
     width: 4,
     height: 4,
-    offsetX: 2,
-    offsetY: 2,
+    offsetX: 3,
+    offsetY: 3,
     blocks: [
-      { type: 'I', targetX: 2, targetY: 2, targetRot: 0 },
-      { type: 'O', targetX: 2, targetY: 3, targetRot: 0 },
-      { type: 'O', targetX: 4, targetY: 3, targetRot: 0 },
-      { type: 'I', targetX: 2, targetY: 5, targetRot: 0 },
+      { type: 'I', targetX: 3, targetY: 3, targetRot: 0 },
+      { type: 'O', targetX: 3, targetY: 4, targetRot: 0 },
+      { type: 'O', targetX: 5, targetY: 4, targetRot: 0 },
+      { type: 'I', targetX: 3, targetY: 6, targetRot: 0 },
     ]
   },
   '4x6': {
     width: 4,
     height: 6,
-    offsetX: 2,
-    offsetY: 1,
+    offsetX: 3,
+    offsetY: 2,
     blocks: [
       // Top section (I, O, O) - Rows 1, 2, 3
-      { type: 'I', targetX: 2, targetY: 1, targetRot: 0 },
-      { type: 'O', targetX: 2, targetY: 2, targetRot: 0 },
-      { type: 'O', targetX: 4, targetY: 2, targetRot: 0 },
+      { type: 'I', targetX: 3, targetY: 2, targetRot: 0 },
+      { type: 'O', targetX: 3, targetY: 3, targetRot: 0 },
+      { type: 'O', targetX: 5, targetY: 3, targetRot: 0 },
       // Bottom section (J, L, O) - Rows 4, 5, 6
-      { type: 'J', targetX: 3, targetY: 4, targetRot: 90 },
-      { type: 'L', targetX: 4, targetY: 6, targetRot: 270 },
-      { type: 'O', targetX: 3, targetY: 5, targetRot: 0 },
+      { type: 'J', targetX: 4, targetY: 5, targetRot: 90 },
+      { type: 'L', targetX: 5, targetY: 7, targetRot: 270 },
+      { type: 'O', targetX: 4, targetY: 6, targetRot: 0 },
     ]
   }
 };
@@ -229,6 +267,8 @@ export default function App() {
 
   const startNewGame = (size: PuzzleSize = selectedSize) => {
     const config = PUZZLE_CONFIGS[size];
+    if (!config) return;
+
     const newGrid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(false));
     
     for (let y = config.offsetY; y < config.offsetY + config.height; y++) {
@@ -308,13 +348,19 @@ export default function App() {
         const relX = a.position.x - b.position.x;
         const relY = a.position.y - b.position.y;
 
-        if (relX === rotatedTargetRel.x && relY === rotatedTargetRel.y) {
-          // Merge groups
+        if (Math.abs(relX - rotatedTargetRel.x) < 0.25 && Math.abs(relY - rotatedTargetRel.y) < 0.25) {
+          // Merge groups and snap to exact relative position
           const oldGroupId = b.groupId;
           const newGroupId = a.groupId;
+          
+          const snapDx = rotatedTargetRel.x - relX;
+          const snapDy = rotatedTargetRel.y - relY;
+
           for (let k = 0; k < newBlocks.length; k++) {
             if (newBlocks[k].groupId === oldGroupId) {
               newBlocks[k].groupId = newGroupId;
+              newBlocks[k].position.x -= snapDx;
+              newBlocks[k].position.y -= snapDy;
             }
           }
           changed = true;
@@ -331,26 +377,53 @@ export default function App() {
 
       const groupId = targetBlock.groupId;
       const group = prev.filter(b => b.groupId === groupId);
-      const refBlock = group.sort((a, b) => a.id.localeCompare(b.id))[0];
-
-      const newRotation = refBlock.rotation + 90;
-      const offset = newRotation - refBlock.targetRotation;
       
-      // Calculate bounds after rotation around (0,0)
+      // Calculate current centroid
+      let totalX = 0, totalY = 0, count = 0;
+      group.forEach(b => {
+        const targetShape = rotatePoints(TETROMINO_SHAPES[b.type], b.targetRotation);
+        const currentOffset = b.rotation - b.targetRotation;
+        const currentShape = rotatePoints(targetShape, currentOffset);
+        currentShape.forEach(p => {
+          totalX += b.position.x + p.x + 0.5;
+          totalY += b.position.y + p.y + 0.5;
+          count++;
+        });
+      });
+      const cx = totalX / count;
+      const cy = totalY / count;
+
+      // Calculate bounds after rotation around centroid
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       
       group.forEach(b => {
-        const relX = b.targetPosition.x - refBlock.targetPosition.x;
-        const relY = b.targetPosition.y - refBlock.targetPosition.y;
         const targetShape = rotatePoints(TETROMINO_SHAPES[b.type], b.targetRotation);
+        const currentOffset = b.rotation - b.targetRotation;
+        const currentShape = rotatePoints(targetShape, currentOffset);
         
-        const pointsInTarget = targetShape.map(p => ({ x: relX + p.x, y: relY + p.y }));
-        const rotatedPoints = rotatePoints(pointsInTarget, offset);
+        // Current block centroid in absolute coordinates
+        const bcx = currentShape.reduce((sum, p) => sum + b.position.x + p.x + 0.5, 0) / currentShape.length;
+        const bcy = currentShape.reduce((sum, p) => sum + b.position.y + p.y + 0.5, 0) / currentShape.length;
+
+        // Rotate block centroid around group centroid
+        const newBlockCentroid = rotateAround({ x: bcx, y: bcy }, { x: cx, y: cy }, 90);
         
-        rotatedPoints.forEach(p => {
-          const gx = refBlock.position.x + p.x;
-          const gy = refBlock.position.y + p.y;
-          
+        const nextRotation = b.rotation + 90;
+        const nextOffset = nextRotation - b.targetRotation;
+        const nextShape = rotatePoints(targetShape, nextOffset);
+        
+        // Relative centroid of the next shape
+        const nrbcx = nextShape.reduce((sum, p) => sum + p.x + 0.5, 0) / nextShape.length;
+        const nrbcy = nextShape.reduce((sum, p) => sum + p.y + 0.5, 0) / nextShape.length;
+
+        const newPos = { 
+          x: newBlockCentroid.x - nrbcx, 
+          y: newBlockCentroid.y - nrbcy 
+        };
+
+        nextShape.forEach(p => {
+          const gx = newPos.x + p.x;
+          const gy = newPos.y + p.y;
           minX = Math.min(minX, gx);
           maxX = Math.max(maxX, gx);
           minY = Math.min(minY, gy);
@@ -368,17 +441,26 @@ export default function App() {
       const finalBlocks = prev.map(b => {
         if (b.groupId !== groupId) return b;
         
-        const relX = b.targetPosition.x - refBlock.targetPosition.x;
-        const relY = b.targetPosition.y - refBlock.targetPosition.y;
-        const newOffset = (b.rotation + 90) - b.targetRotation;
-        const finalRotatedRel = rotatePoints([{ x: relX, y: relY }], newOffset)[0];
+        const targetShape = rotatePoints(TETROMINO_SHAPES[b.type], b.targetRotation);
+        const currentOffset = b.rotation - b.targetRotation;
+        const currentShape = rotatePoints(targetShape, currentOffset);
+        const bcx = currentShape.reduce((sum, p) => sum + b.position.x + p.x + 0.5, 0) / currentShape.length;
+        const bcy = currentShape.reduce((sum, p) => sum + b.position.y + p.y + 0.5, 0) / currentShape.length;
 
+        const newBlockCentroid = rotateAround({ x: bcx, y: bcy }, { x: cx, y: cy }, 90);
+        
+        const nextRotation = b.rotation + 90;
+        const nextOffset = nextRotation - b.targetRotation;
+        const nextShape = rotatePoints(targetShape, nextOffset);
+        const nrbcx = nextShape.reduce((sum, p) => sum + p.x + 0.5, 0) / nextShape.length;
+        const nrbcy = nextShape.reduce((sum, p) => sum + p.y + 0.5, 0) / nextShape.length;
+        
         return { 
           ...b, 
-          rotation: b.rotation + 90,
+          rotation: nextRotation,
           position: { 
-            x: refBlock.position.x + dx + finalRotatedRel.x, 
-            y: refBlock.position.y + dy + finalRotatedRel.y 
+            x: newBlockCentroid.x - nrbcx + dx, 
+            y: newBlockCentroid.y - nrbcy + dy
           } 
         };
       });
@@ -390,10 +472,10 @@ export default function App() {
   const onDragEnd = (block: Tetromino, event: any, info: any) => {
     setBlocks(prev => {
       const groupId = block.groupId;
-      const dx = Math.round(info.offset.x / CELL_SIZE);
-      const dy = Math.round(info.offset.y / CELL_SIZE);
+      const dx = info.offset.x / CELL_SIZE;
+      const dy = info.offset.y / CELL_SIZE;
 
-      if (dx === 0 && dy === 0) return prev;
+      if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return prev;
 
       const group = prev.filter(b => b.groupId === groupId);
       const refBlock = group.sort((a, b) => a.id.localeCompare(b.id))[0];
@@ -401,17 +483,13 @@ export default function App() {
       // Calculate bounds after move
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       group.forEach(b => {
-        const relX = b.targetPosition.x - refBlock.targetPosition.x;
-        const relY = b.targetPosition.y - refBlock.targetPosition.y;
         const targetShape = rotatePoints(TETROMINO_SHAPES[b.type], b.targetRotation);
         const offset = b.rotation - b.targetRotation;
+        const currentShape = rotatePoints(targetShape, offset);
         
-        const pointsInTarget = targetShape.map(p => ({ x: relX + p.x, y: relY + p.y }));
-        const rotatedPoints = rotatePoints(pointsInTarget, offset);
-        
-        rotatedPoints.forEach(p => {
-          const gx = refBlock.position.x + dx + p.x;
-          const gy = refBlock.position.y + dy + p.y;
+        currentShape.forEach(p => {
+          const gx = b.position.x + dx + p.x;
+          const gy = b.position.y + dy + p.y;
           
           minX = Math.min(minX, gx);
           maxX = Math.max(maxX, gx);
@@ -420,7 +498,7 @@ export default function App() {
         });
       });
 
-      // Clamp to board
+      // Clamp to board (optional, but keeps pieces visible)
       let finalDx = dx;
       let finalDy = dy;
       if (minX < 0) finalDx -= minX;
@@ -439,32 +517,15 @@ export default function App() {
   useEffect(() => {
     if (blocks.length === 0 || !gameStarted) return;
 
-    // Win condition: Compare the set of occupied cells for each block
-    // We must account for the fact that groups rotate around their centroid.
+    // Win condition: Check if all blocks are close to their target positions and rotations
     const allCorrect = blocks.every(block => {
-      const group = blocks.filter(b => b.groupId === block.groupId);
-      const refBlock = group.sort((a, b) => a.id.localeCompare(b.id))[0];
-
-      // Current occupied cells in grid coordinates
-      const relX = block.targetPosition.x - refBlock.targetPosition.x;
-      const relY = block.targetPosition.y - refBlock.targetPosition.y;
-      const targetShape = rotatePoints(TETROMINO_SHAPES[block.type], block.targetRotation);
-      const offset = block.rotation - block.targetRotation;
+      const posDiff = Math.sqrt(
+        Math.pow(block.position.x - block.targetPosition.x, 2) + 
+        Math.pow(block.position.y - block.targetPosition.y, 2)
+      );
+      const rotDiff = (Math.abs(block.rotation - block.targetRotation) % 360 + 360) % 360;
       
-      const pointsInTarget = targetShape.map(p => ({ x: relX + p.x, y: relY + p.y }));
-      const rotatedPoints = rotatePoints(pointsInTarget, offset);
-      
-      const currentCells = rotatedPoints.map(p => {
-        const finalX = refBlock.position.x + p.x;
-        const finalY = refBlock.position.y + p.y;
-        return `${finalX},${finalY}`;
-      }).sort();
-      
-      const targetCells = targetShape.map(p => 
-        `${Math.round(block.targetPosition.x + p.x)},${Math.round(block.targetPosition.y + p.y)}`
-      ).sort();
-      
-      return JSON.stringify(currentCells) === JSON.stringify(targetCells);
+      return posDiff < 0.3 && (rotDiff < 5 || rotDiff > 355);
     });
 
     if (allCorrect) {
@@ -545,16 +606,18 @@ export default function App() {
             }}
           >
             {/* Target Area Outline */}
-            <div 
-              className="absolute border-4 border-dashed border-[#141414] pointer-events-none z-0"
-              style={{
-                left: PUZZLE_CONFIGS[selectedSize].offsetX * CELL_SIZE,
-                top: PUZZLE_CONFIGS[selectedSize].offsetY * CELL_SIZE,
-                width: PUZZLE_CONFIGS[selectedSize].width * CELL_SIZE,
-                height: PUZZLE_CONFIGS[selectedSize].height * CELL_SIZE,
-                backgroundColor: 'rgba(20,20,20,0.03)'
-              }}
-            />
+            {PUZZLE_CONFIGS[selectedSize] && (
+              <div 
+                className="absolute border-4 border-dashed border-[#141414] pointer-events-none z-0"
+                style={{
+                  left: PUZZLE_CONFIGS[selectedSize].offsetX * CELL_SIZE,
+                  top: PUZZLE_CONFIGS[selectedSize].offsetY * CELL_SIZE,
+                  width: PUZZLE_CONFIGS[selectedSize].width * CELL_SIZE,
+                  height: PUZZLE_CONFIGS[selectedSize].height * CELL_SIZE,
+                  backgroundColor: 'rgba(20,20,20,0.03)'
+                }}
+              />
+            )}
 
             {/* Blocks (Grouped) */}
             {Object.entries(groupedBlocks).map(([groupId, groupBlocks]) => (
