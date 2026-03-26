@@ -297,8 +297,8 @@ export default function App() {
         if (!a.isPlaced || !b.isPlaced || a.groupId === b.groupId) continue;
 
         // Relative rotation offset from target
-        const offsetA = (a.rotation - a.targetRotation + 360) % 360;
-        const offsetB = (b.rotation - b.targetRotation + 360) % 360;
+        const offsetA = ((a.rotation - a.targetRotation) % 360 + 360) % 360;
+        const offsetB = ((b.rotation - b.targetRotation) % 360 + 360) % 360;
 
         if (offsetA !== offsetB) continue;
 
@@ -352,7 +352,7 @@ export default function App() {
       const gcx = sumX / count + 0.5;
       const gcy = sumY / count + 0.5;
 
-      const newRotation = (refBlock.rotation + 90) % 360;
+      const newRotation = refBlock.rotation + 90;
       
       // Calculate bounds after rotation around centroid
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
