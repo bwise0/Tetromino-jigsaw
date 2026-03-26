@@ -89,7 +89,7 @@ const Block: React.FC<BlockProps> = ({
                 backgroundImage: imageUrl ? `url(${imageUrl})` : 'none',
                 backgroundSize: `${GRID_SIZE * CELL_SIZE}px ${GRID_SIZE * CELL_SIZE}px`,
                 backgroundPosition: `-${solvedX * CELL_SIZE}px -${solvedY * CELL_SIZE}px`,
-                transform: `rotate(${-block.targetRotation}deg)`,
+                transform: `rotate(${-(block.rotation - block.targetRotation)}deg)`,
               }}
             />
           );
@@ -170,7 +170,7 @@ const BlockGroup: React.FC<BlockGroupProps> = ({
                     backgroundImage: imageUrl ? `url(${imageUrl})` : 'none',
                     backgroundSize: `${GRID_SIZE * CELL_SIZE}px ${GRID_SIZE * CELL_SIZE}px`,
                     backgroundPosition: `-${solvedX * CELL_SIZE}px -${solvedY * CELL_SIZE}px`,
-                    transform: `rotate(${-block.targetRotation}deg)`,
+                    transform: `rotate(${-(block.rotation - block.targetRotation)}deg)`,
                   }}
                 />
               );
@@ -371,7 +371,7 @@ export default function App() {
         if (b.groupId !== groupId) return b;
         return { 
           ...b, 
-          rotation: newRotation,
+          rotation: b.rotation + 90,
           position: { x: b.position.x + dx, y: b.position.y + dy } 
         };
       });
