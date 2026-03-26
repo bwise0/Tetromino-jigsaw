@@ -259,6 +259,7 @@ export default function App() {
   const [gameWon, setGameWon] = useState(false);
   const [puzzleImage, setPuzzleImage] = useState<string>('');
   const [selectedSize, setSelectedSize] = useState<PuzzleSize>('4x4');
+  const [gameStarted, setGameStarted] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
 
   // Initialize game
@@ -284,17 +285,14 @@ export default function App() {
 
     const initialBlocks: Tetromino[] = config.blocks.map((blockConfig, i) => {
       const id = `block-${i}-${Date.now()}`;
-      // Random starting position on the board, but not exactly at target
-      const startX = Math.floor(Math.random() * (GRID_SIZE - 2));
-      const startY = Math.floor(Math.random() * (GRID_SIZE - 2));
       
       return {
         id,
         groupId: id,
         type: blockConfig.type,
-        position: { x: startX, y: startY },
-        // Randomize starting rotation for challenge
-        rotation: [0, 90, 180, 270][Math.floor(Math.random() * 4)],
+        // Start at target position for debugging/preview
+        position: { x: blockConfig.targetX, y: blockConfig.targetY },
+        rotation: blockConfig.targetRot,
         isPlaced: true,
         color: TETROMINO_COLORS[blockConfig.type],
         targetPosition: { x: blockConfig.targetX, y: blockConfig.targetY },
@@ -303,6 +301,23 @@ export default function App() {
     });
     
     setBlocks(initialBlocks);
+    setGameWon(false);
+    setGameStarted(false);
+  };
+
+  const shuffleBlocks = () => {
+    setBlocks(prev => {
+      return prev.map(block => ({
+        ...block,
+        groupId: block.id, // Ungroup everything
+        position: {
+          x: Math.floor(Math.random() * (GRID_SIZE - 2)),
+          y: Math.floor(Math.random() * (GRID_SIZE - 2))
+        },
+        rotation: [0, 90, 180, 270][Math.floor(Math.random() * 4)]
+      }));
+    });
+    setGameStarted(true);
     setGameWon(false);
   };
 
@@ -495,7 +510,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (blocks.length === 0) return;
+    if (blocks.length === 0 || !gameStarted) return;
 
     // Win condition: Compare the set of occupied cells for each block
     // We must account for the fact that groups rotate around their centroid.
@@ -596,13 +611,23 @@ export default function App() {
             ))}
           </div>
 
-          <button 
-            onClick={() => startNewGame()}
-            className="px-6 py-2 bg-[#141414] text-[#E4E3E0] font-bold uppercase tracking-widest hover:bg-opacity-80 transition-all flex items-center gap-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] active:translate-y-1 active:shadow-none"
-          >
-            <RotateCcw size={18} />
-            Reset
-          </button>
+          {!gameStarted ? (
+            <button 
+              onClick={shuffleBlocks}
+              className="px-6 py-2 bg-[#141414] text-[#E4E3E0] font-bold uppercase tracking-widest hover:bg-opacity-80 transition-all flex items-center gap-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] active:translate-y-1 active:shadow-none"
+            >
+              <Trash2 size={18} />
+              Shuffle
+            </button>
+          ) : (
+            <button 
+              onClick={() => startNewGame()}
+              className="px-6 py-2 bg-[#141414] text-[#E4E3E0] font-bold uppercase tracking-widest hover:bg-opacity-80 transition-all flex items-center gap-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] active:translate-y-1 active:shadow-none"
+            >
+              <RotateCcw size={18} />
+              Reset
+            </button>
+          )}
         </div>
       </header>
 
