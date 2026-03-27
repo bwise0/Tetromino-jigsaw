@@ -79,7 +79,7 @@
         // Helpers
         const rotatePoints = (type, rotation) => {
             const points = TETROMINO_SHAPES[type];
-            if (rotation === 0) return points;
+            if (rotation % 360 === 0) return points;
             
             const cx = TETROMINO_CENTERS[type].x;
             const cy = TETROMINO_CENTERS[type].y;
@@ -128,14 +128,12 @@
             const centroid = useMemo(() => {
                 let tx = 0, ty = 0, count = 0;
                 blocks.forEach(b => {
-                    const targetShape = rotatePoints(b.type, b.targetRotation);
+                    const center = TETROMINO_CENTERS[b.type];
                     const relX = b.targetPosition.x - refBlock.targetPosition.x;
                     const relY = b.targetPosition.y - refBlock.targetPosition.y;
-                    targetShape.forEach(p => {
-                        tx += (relX + p.x + 0.5);
-                        ty += (relY + p.y + 0.5);
-                        count++;
-                    });
+                    tx += (relX + center.x);
+                    ty += (relY + center.y);
+                    count++;
                 });
                 return { x: (tx / count) * CELL_SIZE, y: (ty / count) * CELL_SIZE };
             }, [blocks, refBlock]);
@@ -310,6 +308,20 @@
                 const newBlocks = [...currentBlocks];
                 let changed = false;
 
+                // Helper to calculate centroid of a group
+                const getGroupCentroid = (group, refBlock) => {
+                    let tx = 0, ty = 0, count = 0;
+                    group.forEach(b => {
+                        const center = TETROMINO_CENTERS[b.type];
+                        const relX = b.targetPosition.x - refBlock.targetPosition.x;
+                        const relY = b.targetPosition.y - refBlock.targetPosition.y;
+                        tx += (relX + center.x);
+                        ty += (relY + center.y);
+                        count++;
+                    });
+                    return { x: tx / count, y: ty / count };
+                };
+
                 for (let i = 0; i < newBlocks.length; i++) {
                     for (let j = i + 1; j < newBlocks.length; j++) {
                         const a = newBlocks[i];
@@ -322,21 +334,30 @@
 
                         if (offsetA !== offsetB) continue;
 
-                        const targetRelX = a.targetPosition.x - b.targetPosition.x;
-                        const targetRelY = a.targetPosition.y - b.targetPosition.y;
+                        const centerA = TETROMINO_CENTERS[a.type];
+                        const centerB = TETROMINO_CENTERS[b.type];
+
+                        const targetCenterX = a.targetPosition.x + centerA.x - (b.targetPosition.x + centerB.x);
+                        const targetCenterY = a.targetPosition.y + centerA.y - (b.targetPosition.y + centerB.y);
                         
-                        const rotatedTargetRelRaw = rotateAround({ x: targetRelX, y: targetRelY }, { x: 0, y: 0 }, offsetA);
-                        const rotatedTargetRel = { x: Math.round(rotatedTargetRelRaw.x), y: Math.round(rotatedTargetRelRaw.y) };
+                        const rotatedTargetCenterRelRaw = rotateAround({ x: targetCenterX, y: targetCenterY }, { x: 0, y: 0 }, offsetA);
+                        
+                        const expectedRelX = rotatedTargetCenterRelRaw.x - centerA.x + centerB.x;
+                        const expectedRelY = rotatedTargetCenterRelRaw.y - centerA.y + centerB.y;
 
                         const relX = a.position.x - b.position.x;
                         const relY = a.position.y - b.position.y;
 
-                        if (Math.abs(relX - rotatedTargetRel.x) < 0.3 && Math.abs(relY - rotatedTargetRel.y) < 0.3) {
+                        if (Math.abs(relX - expectedRelX) < 0.3 && Math.abs(relY - expectedRelY) < 0.3) {
                             const oldGroupId = b.groupId;
                             const newGroupId = a.groupId;
                             
-                            const snapDx = rotatedTargetRel.x - relX;
-                            const snapDy = rotatedTargetRel.y - relY;
+                            const snapDx = expectedRelX - relX;
+                            const snapDy = expectedRelY - relY;
+
+                            // Calculate centroids before merge
+                            const groupA = newBlocks.filter(block => block.groupId === newGroupId);
+                            const centroidA = getGroupCentroid(groupA, a);
 
                             for (let k = 0; k < newBlocks.length; k++) {
                                 if (newBlocks[k].groupId === oldGroupId) {
@@ -345,6 +366,32 @@
                                     newBlocks[k].position.y -= snapDy;
                                 }
                             }
+
+                            // Calculate new centroid after merge
+                            const mergedGroup = newBlocks.filter(block => block.groupId === newGroupId);
+                            const centroidNew = getGroupCentroid(mergedGroup, a);
+
+                            // Adjust positions to prevent visual jumping due to centroid change
+                            const rad = (offsetA * Math.PI) / 180;
+                            const cos = Math.round(Math.cos(rad));
+                            const sin = Math.round(Math.sin(rad));
+                            
+                            const dcx = centroidA.x - centroidNew.x;
+                            const dcy = centroidA.y - centroidNew.y;
+                            
+                            const rotatedDcx = dcx * cos - dcy * sin;
+                            const rotatedDcy = dcx * sin + dcy * cos;
+                            
+                            const adjustX = dcx - rotatedDcx;
+                            const adjustY = dcy - rotatedDcy;
+
+                            for (let k = 0; k < newBlocks.length; k++) {
+                                if (newBlocks[k].groupId === newGroupId) {
+                                    newBlocks[k].position.x += adjustX;
+                                    newBlocks[k].position.y += adjustY;
+                                }
+                            }
+
                             changed = true;
                         }
                     }
@@ -359,54 +406,12 @@
 
                     const groupId = targetBlock.groupId;
                     setActiveGroupId(groupId);
-                    const group = prev.filter(b => b.groupId === groupId);
                     
-                    // 1. Calculate the exact global center of mass of the group
-                    let sumX = 0, sumY = 0, count = 0;
-                    group.forEach(b => {
-                        const localCenter = TETROMINO_CENTERS[b.type];
-                        sumX += b.position.x + localCenter.x;
-                        sumY += b.position.y + localCenter.y;
-                        count++;
-                    });
-                    let cx = sumX / count;
-                    let cy = sumY / count;
-
-                    // 2. Round the group center to the nearest grid intersection or cell center
-                    // This ensures that 90-degree rotations keep all blocks aligned to the grid!
-                    const ix = Math.round(cx);
-                    const iy = Math.round(cy);
-                    const dist1 = Math.pow(cx - ix, 2) + Math.pow(cy - iy, 2);
-                    
-                    const hx = Math.floor(cx) + 0.5;
-                    const hy = Math.floor(cy) + 0.5;
-                    const dist2 = Math.pow(cx - hx, 2) + Math.pow(cy - hy, 2);
-                    
-                    if (dist1 < dist2) {
-                        cx = ix;
-                        cy = iy;
-                    } else {
-                        cx = hx;
-                        cy = hy;
-                    }
-
                     const rotatedBlocks = prev.map(b => {
                         if (b.groupId !== groupId) return b;
-
-                        const localCenter = TETROMINO_CENTERS[b.type];
-                        const blockCx = b.position.x + localCenter.x;
-                        const blockCy = b.position.y + localCenter.y;
-
-                        // Rotate the block's center around the group's global center by 90 degrees clockwise
-                        const newBlockCenter = rotateAround({ x: blockCx, y: blockCy }, { x: cx, y: cy }, 90);
-
                         return {
                             ...b,
-                            position: {
-                                x: Math.round(newBlockCenter.x - localCenter.x),
-                                y: Math.round(newBlockCenter.y - localCenter.y)
-                            },
-                            rotation: (b.rotation + 90) % 360
+                            rotation: b.rotation + 90
                         };
                     });
 
